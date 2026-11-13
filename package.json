@@ -1,6 +1,6 @@
 {
   "name": "honeytar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A honeypot that tarpits scanners and sends them to a blocklist: decoy pages, a slow-drip tarpit, and a reporting pipeline for Cloudflare Workers.",
   "license": "MIT",
   "type": "module",

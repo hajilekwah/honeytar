@@ -95,14 +95,24 @@ async function blockPass(db: Db, ip: string, asn: string | null) {
   }
 }
 
-/** Adds a tarpit result to the most recent row for the same site, source and path. */
+/**
+ * Adds a tarpit result to the most recent row for the same site, source and path. A scanner that gives up very quickly
+ * can report its hold before the visit's own row has been saved, so look a few times before concluding there is no row.
+ */
 async function recordHold(body: unknown): Promise<Response> {
   const { hold, error } = validateHold(body);
   if (!hold) return json(400, { error: error ?? "invalid hold" });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  let q = db.from("honeypot_hits").select("id, holds, held_ms, gave_up, waited_out, shortest_gave_up_ms").eq("ip", hold.ip).eq("path", hold.path);
-  if (hold.host) q = q.eq("host", hold.host);
-  const row = await q.order("last_seen", { ascending: false }).limit(1).maybeSingle();
+  const find = () => {
+    let q = db.from("honeypot_hits").select("id, holds, held_ms, gave_up, waited_out, shortest_gave_up_ms").eq("ip", hold.ip).eq("path", hold.path);
+    if (hold.host) q = q.eq("host", hold.host);
+    return q.order("last_seen", { ascending: false }).limit(1).maybeSingle();
+  };
+  let row = await find();
+  for (let attempt = 0; attempt < 3 && !row.data && !row.error; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    row = await find();
+  }
   if (row.error) return json(500, { error: "lookup failed" });
   if (!row.data) return json(200, { ok: true, matched: false });
   const r = await db.from("honeypot_hits").update(applyHold(row.data, hold)).eq("id", row.data.id);
@@ -175,13 +185,16 @@ Deno.serve(async (req) => {
     }).eq("id", existing.data.id);
     if (r.error) return json(500, { error: "update failed" });
   } else {
-    const rdns = await reverseName(db, hit.ip);
+    // Save the visit first, then look up the hostname: the lookup can take a couple of seconds, and a hold result for a
+    // fast-leaving scanner must find the row.
     const r = await db.from("honeypot_hits").insert({
       fingerprint, ip: hit.ip, country: hit.country, asn: hit.asn, host: hit.host, path: hit.path,
       method: hit.method, user_agent: hit.userAgent, samples: [hit.sample],
-      ...connectionFields(hit), rdns,
+      ...connectionFields(hit),
     });
     if (r.error) return json(500, { error: "insert failed" });
+    const rdns = await reverseName(db, hit.ip);
+    if (rdns !== null) await db.from("honeypot_hits").update({ rdns }).eq("fingerprint", fingerprint);
   }
 
   // Retention: about one request in twenty tidies up rows older than 30 days.

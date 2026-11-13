@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+- Ingest function: a hold result from a scanner that gave up very quickly could be lost, because the visit's row was saved only after a reverse-DNS lookup. The row is now saved first and the hostname added afterwards, and the hold handler retries briefly if it cannot find the row yet. Redeploy the function; the npm package code is unchanged.
+
+## 0.1.0
 
 First release as a package, extracted from the author's four live sites.
 
