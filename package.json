@@ -1,0 +1,54 @@
+{
+  "name": "honeytar",
+  "version": "0.1.0",
+  "description": "A honeypot that tarpits scanners and sends them to a blocklist: decoy pages, a slow-drip tarpit, and a reporting pipeline for Cloudflare Workers.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "supabase",
+    "sql",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "honeypot",
+    "tarpit",
+    "cloudflare-workers",
+    "security",
+    "scanner",
+    "blocklist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hajilekwah/honeytar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hajilekwah/honeytar/issues"
+  },
+  "homepage": "https://github.com/hajilekwah/honeytar#readme",
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
