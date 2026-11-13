@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Crawler maze (opt-in): `HONEYTAR_MAZE` (URL prefix) and `HONEYTAR_MAZE_MS` (hold per page). Generated, deterministic, noindex pages that link only deeper into the maze; invalid paths are a plain 404; a per-instance budget of 300 pages a minute. Each view is reported (`kind: "maze"`) with depth, hold time and outcome.
+- Ingest function: handles maze views through one atomic database function, `public.honeytar_record_maze`, and stores them in `honeypot_maze` (new `sql/002_maze.sql`). Recording only; nothing is blocked. Run the new SQL and redeploy the function to use the maze; without them, the maze setting does nothing harmful (reports are refused).
+- New exports: `mazePrefix`, `mazeMs`, `mazeMatch`, `mazePage`, `mazeResponse`, `MAZE`, `WORDS`, `reportMaze`.
+
 ## 0.1.1
 
 - Ingest function: a hold result from a scanner that gave up very quickly could be lost, because the visit's row was saved only after a reverse-DNS lookup. The row is now saved first and the hostname added afterwards, and the hold handler retries briefly if it cannot find the row yet. Redeploy the function; the npm package code is unchanged.

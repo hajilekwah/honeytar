@@ -4,7 +4,7 @@
 // Repeat visits from the same source to the same path on the same day update one row. The service role key it
 // writes with never leaves Supabase. Rows older than 30 days are deleted now and then.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BLOCK, applyHold, blockCidr, blockReason, fingerprintFor, isAllowlisted, mergeSamples, parsePtrAnswer, ptrName, secretMatches, validateHit, validateHold } from "./logic.ts";
+import { BLOCK, applyHold, blockCidr, blockReason, fingerprintFor, isAllowlisted, mergeSamples, parsePtrAnswer, ptrName, secretMatches, validateHit, validateHold, validateMaze } from "./logic.ts";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -120,6 +120,33 @@ async function recordHold(body: unknown): Promise<Response> {
   return json(200, { ok: true, matched: true });
 }
 
+/**
+ * One crawler-maze page view. Counted by a single atomic database function, so a crawler fetching many pages at once
+ * cannot lose counts. The reverse DNS name is looked up once, when the day's row is first created. Recorded only: a maze
+ * view never triggers a block.
+ */
+async function recordMaze(body: unknown): Promise<Response> {
+  const { visit, error } = validateMaze(body);
+  if (!visit) return json(400, { error: error ?? "invalid maze view" });
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const r = await db.rpc("honeytar_record_maze", {
+    p_host: visit.host, p_ip: visit.ip, p_path: visit.path, p_depth: visit.depth, p_held_ms: visit.heldMs,
+    p_gave_up: visit.outcome === "gave_up", p_has_referer: visit.hasReferer, p_user_agent: visit.userAgent,
+    p_country: visit.country, p_asn: visit.asn, p_as_org: visit.asOrg, p_city: visit.city, p_region: visit.region,
+    p_colo: visit.colo, p_http_protocol: visit.httpProtocol, p_tls_version: visit.tlsVersion, p_via_worker: visit.viaWorker,
+  });
+  if (r.error) return json(500, { error: "maze record failed" });
+  if (r.data === true) {
+    const rdns = await reverseName(db, visit.ip);
+    if (rdns !== null) {
+      const day = new Date().toISOString().slice(0, 10);
+      const site = visit.host ? `${visit.host.toLowerCase().replace(/^www\./, "")}|` : "";
+      await db.from("honeypot_maze").update({ rdns }).eq("fingerprint", `${site}${visit.ip}|${day}`);
+    }
+  }
+  return json(200, { ok: true });
+}
+
 /** The optional connection details from a hit, as database columns (only the ones present, so a later hit never blanks an earlier one). */
 function connectionFields(hit: { asOrg: string | null; city: string | null; region: string | null; colo: string | null; httpProtocol: string | null; tlsVersion: string | null; viaWorker: string | null }) {
   const out: Record<string, string> = {};
@@ -167,6 +194,8 @@ Deno.serve(async (req) => {
   }
   // A tarpit result (how long a decoy was held and how it ended) updates the matching row's totals.
   if ((body as { kind?: unknown } | null)?.kind === "hold") return await recordHold(body);
+  // A crawler-maze page view is counted on the day's row for that site and source.
+  if ((body as { kind?: unknown } | null)?.kind === "maze") return await recordMaze(body);
 
   const { hit, error } = validateHit(body);
   if (!hit) return json(400, { error: error ?? "invalid hit" });

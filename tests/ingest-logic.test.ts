@@ -72,7 +72,7 @@ describe('fingerprintFor and mergeSamples', () => {
   });
 });
 
-import { BLOCK, blockCidr, blockReason, ipInCidr, isAllowlisted, isReservedIp, parseIp } from "../supabase/functions/honeytar-ingest/logic";
+import { BLOCK, blockCidr, blockReason, ipInCidr, isAllowlisted, isReservedIp, parseIp, validateMaze } from "../supabase/functions/honeytar-ingest/logic";
 
 describe("auto-block rules", () => {
   it("parses and matches IPv4 and IPv6", () => {
@@ -166,5 +166,29 @@ describe("connection details and reverse DNS", () => {
     expect(parsePtrAnswer({ Answer: [{ type: 12, data: "  " }] })).toBeNull();
     expect(parsePtrAnswer(null)).toBeNull();
     expect(parsePtrAnswer({ Answer: "bad" })).toBeNull();
+  });
+});
+
+describe('validateMaze', () => {
+  const good = { kind: 'maze', ip: '198.51.100.7', host: 'site.example', path: '/field-notes/amber', depth: 1, heldMs: 8000, outcome: 'completed', userAgent: 'Bot/1.0', referer: 'https://site.example/field-notes', country: 'US', asn: '64500', colo: 'lax' };
+
+  it('cleans a good view', () => {
+    const { visit } = validateMaze(good);
+    expect(visit).toMatchObject({ ip: '198.51.100.7', host: 'site.example', path: '/field-notes/amber', depth: 1, heldMs: 8000, outcome: 'completed', hasReferer: true, country: 'us', asn: '64500', colo: 'LAX' });
+  });
+
+  it('refuses bad input', () => {
+    for (const bad of [null, [], { ...good, ip: 'x y' }, { ...good, path: 'nope' }, { ...good, outcome: 'maybe' }, { ...good, heldMs: -1 }, { ...good, heldMs: 'a' }, { ...good, depth: 1.5 }, { ...good, depth: -1 }]) {
+      expect(validateMaze(bad).visit).toBeUndefined();
+    }
+  });
+
+  it('caps depth and hold, strips markup from text, and records only whether a Referer was sent', () => {
+    const { visit } = validateMaze({ ...good, depth: 9999, heldMs: 9e9, userAgent: '<b>Bot</b>', referer: 'https://secret.example/?q=1' });
+    expect(visit!.depth).toBe(50);
+    expect(visit!.heldMs).toBe(120_000);
+    expect(visit!.userAgent).not.toMatch(/[<>]/);
+    expect(JSON.stringify(visit)).not.toContain('secret.example');
+    expect(validateMaze({ ...good, referer: undefined }).visit!.hasReferer).toBe(false);
   });
 });

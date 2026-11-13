@@ -270,3 +270,62 @@ export function parsePtrAnswer(body: unknown): string | null {
   }
   return null;
 }
+
+// ---------- crawler maze ----------
+// Each page a crawler fetches in the maze is reported with its depth, how long it was held and how that ended. The
+// database function public.honeytar_record_maze adds it to the day's row for that site and source. Recorded only:
+// nothing here blocks anyone.
+
+export const MAZE_LIMITS = { maxDepth: 50 } as const;
+
+export interface MazeVisit {
+  ip: string;
+  host: string | null;
+  path: string;
+  depth: number;
+  heldMs: number;
+  outcome: (typeof HOLD_OUTCOMES)[number];
+  hasReferer: boolean;
+  userAgent: string | null;
+  country: string | null;
+  asn: string | null;
+  asOrg: string | null;
+  city: string | null;
+  region: string | null;
+  colo: string | null;
+  httpProtocol: string | null;
+  tlsVersion: string | null;
+  viaWorker: string | null;
+}
+
+/** Validates one maze page view from a Worker. Returns the cleaned view, or a reason it was refused. */
+export function validateMaze(body: unknown): { visit?: MazeVisit; error?: string } {
+  const b = body as Record<string, unknown> | null;
+  if (!b || typeof b !== "object" || Array.isArray(b)) return { error: "body must be an object" };
+  if (typeof b.ip !== "string" || !IP.test(b.ip)) return { error: "ip is invalid" };
+  if (typeof b.path !== "string" || b.path.length === 0 || !b.path.startsWith("/")) return { error: "path is invalid" };
+  if (!HOLD_OUTCOMES.includes(b.outcome as never)) return { error: "outcome is invalid" };
+  if (typeof b.heldMs !== "number" || !Number.isFinite(b.heldMs) || b.heldMs < 0) return { error: "heldMs is invalid" };
+  if (typeof b.depth !== "number" || !Number.isInteger(b.depth) || b.depth < 0) return { error: "depth is invalid" };
+  return {
+    visit: {
+      ip: b.ip,
+      host: typeof b.host === "string" && b.host ? cleanText(b.host, LIMITS.host) : null,
+      path: cleanText(b.path, LIMITS.path),
+      depth: Math.min(b.depth, MAZE_LIMITS.maxDepth),
+      heldMs: Math.min(Math.round(b.heldMs), HOLD.maxMs),
+      outcome: b.outcome as MazeVisit["outcome"],
+      hasReferer: typeof b.referer === "string" && b.referer.length > 0,
+      userAgent: typeof b.userAgent === "string" && b.userAgent ? cleanText(b.userAgent, LIMITS.ua) : null,
+      country: typeof b.country === "string" && COUNTRY.test(b.country) ? b.country.toLowerCase() : null,
+      asn: typeof b.asn === "string" && ASN.test(b.asn) ? b.asn : null,
+      asOrg: optText(b.asOrg, 100),
+      city: optText(b.city, 80),
+      region: optText(b.region, 80),
+      colo: typeof b.colo === "string" && /^[A-Za-z0-9]{1,8}$/.test(b.colo) ? b.colo.toUpperCase() : null,
+      httpProtocol: optText(b.httpProtocol, 16),
+      tlsVersion: optText(b.tlsVersion, 16),
+      viaWorker: optText(b.viaWorker, 100),
+    },
+  };
+}

@@ -97,6 +97,74 @@ export async function reportHit(request: Request, env: HoneytarEnv, now: number 
   }
 }
 
+/** What Cloudflare knows about the connection (request.cf), as the ingest function expects it. Every part is optional. */
+function connectionInfo(request: Request) {
+  const cf = (request as unknown as { cf?: { asn?: number; asOrganization?: string; city?: string; region?: string; colo?: string; httpProtocol?: string; tlsVersion?: string } }).cf;
+  return {
+    country: request.headers.get('cf-ipcountry') ?? undefined,
+    asn: cf?.asn !== undefined ? String(cf.asn) : undefined,
+    asOrg: cf?.asOrganization,
+    city: cf?.city,
+    region: cf?.region,
+    colo: cf?.colo,
+    httpProtocol: cf?.httpProtocol,
+    tlsVersion: cf?.tlsVersion,
+    viaWorker: request.headers.get('cf-worker') ?? undefined,
+  };
+}
+
+let mazeWindowStart = 0;
+let mazeSent = 0;
+const MAZE_RATE = { windowMs: 60_000, max: 120 } as const;
+
+/** Maze reports have their own, higher cap (a crawler makes many requests); still bounded per Worker instance. */
+export function allowMazeReport(now: number): boolean {
+  if (now - mazeWindowStart >= MAZE_RATE.windowMs) {
+    mazeWindowStart = now;
+    mazeSent = 0;
+  }
+  if (mazeSent >= MAZE_RATE.max) return false;
+  mazeSent += 1;
+  return true;
+}
+
+export interface MazeVisit {
+  /** How many levels below the maze's entry page this page is (0 for the entry). */
+  depth: number;
+  /** How long the page was held, and how that ended. */
+  heldMs: number;
+  outcome: 'gave_up' | 'completed';
+}
+
+/** Sends one maze page view (who, how deep, how long it was held, how it ended). Never throws. */
+export async function reportMaze(request: Request, env: HoneytarEnv, visit: MazeVisit, now: number = Date.now()): Promise<void> {
+  try {
+    const { url: reportUrl, secret } = readSettings(env);
+    if (!reportUrl || !secret) return;
+    const ip = request.headers.get('cf-connecting-ip');
+    if (!ip || !allowMazeReport(now)) return;
+    const url = new URL(request.url);
+    await fetch(reportUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-honeytar-secret': secret },
+      body: JSON.stringify({
+        kind: 'maze',
+        ip,
+        ...connectionInfo(request),
+        host: url.host,
+        path: url.pathname,
+        userAgent: request.headers.get('user-agent') ?? undefined,
+        referer: request.headers.get('referer') ?? undefined,
+        depth: visit.depth,
+        heldMs: visit.heldMs,
+        outcome: visit.outcome,
+      }),
+    });
+  } catch (err) {
+    console.error('Honeypot maze report failed:', err);
+  }
+}
+
 let holdWindowStart = 0;
 let holdSent = 0;
 

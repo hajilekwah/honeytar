@@ -8,6 +8,14 @@ export interface HoneytarEnv {
   HONEYTAR_SECRET?: string;
   /** How long to hold decoy responses, in milliseconds. Unset or 0 turns the tarpit off. */
   HONEYTAR_TARPIT_MS?: string;
+  /**
+   * Turns the crawler maze on: a URL prefix such as "/field-notes" (lower case letters, digits and hyphens). Requests under
+   * it get generated pages that only link deeper into the maze. Unset turns the maze off. Add the prefix to robots.txt as
+   * Disallow, and give people no visible link to it.
+   */
+  HONEYTAR_MAZE?: string;
+  /** How long each maze page is held back, in milliseconds (default 8000, at most 60000, 0 for no hold). */
+  HONEYTAR_MAZE_MS?: string;
   /** @deprecated Older name for HONEYTAR_URL. */
   HONEYPOT_URL?: string;
   /** @deprecated Older name for HONEYTAR_SECRET. */
@@ -20,6 +28,8 @@ export interface Settings {
   url: string | undefined;
   secret: string | undefined;
   tarpitMs: string | undefined;
+  mazePrefix: string | undefined;
+  mazeMs: string | undefined;
 }
 
 /** The effective settings: the new name wins; an empty value counts as unset. */
@@ -29,5 +39,7 @@ export function readSettings(env: HoneytarEnv): Settings {
     url: pick(env.HONEYTAR_URL, env.HONEYPOT_URL),
     secret: pick(env.HONEYTAR_SECRET, env.HONEYPOT_SECRET),
     tarpitMs: pick(env.HONEYTAR_TARPIT_MS, env.TARPIT_MS),
+    mazePrefix: pick(env.HONEYTAR_MAZE),
+    mazeMs: pick(env.HONEYTAR_MAZE_MS),
   };
 }

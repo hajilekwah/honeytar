@@ -4,7 +4,7 @@ The Worker reports each decoy visit to a Supabase Edge Function, which stores it
 
 ## 1. Create the tables
 
-Run [`sql/001_honeytar.sql`](../sql/001_honeytar.sql) in the SQL editor (or as a migration). It is safe to run again.
+Run [`sql/001_honeytar.sql`](../sql/001_honeytar.sql) in the SQL editor (or as a migration). It is safe to run again. If you will use the crawler maze, also run [`sql/002_maze.sql`](../sql/002_maze.sql).
 
 The tables can only be read by the service role until you edit `public.honeytar_is_admin()`. The default returns `false`, so nobody can read them through the API by accident. To read them from your own dashboard, replace its body with your own check, for example `select (auth.jwt() ->> 'email') = 'you@example.com'`.
 

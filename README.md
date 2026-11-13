@@ -62,7 +62,7 @@ Set the shared secret as a Worker secret, never in the file: `npx wrangler secre
 
 ### 4. Set up the backend
 
-See [docs/supabase-setup.md](docs/supabase-setup.md): run `sql/001_honeytar.sql`, deploy the `honeytar-ingest` function, and set its secret.
+See [docs/supabase-setup.md](docs/supabase-setup.md): run `sql/001_honeytar.sql` (and `sql/002_maze.sql` if you use the maze), deploy the `honeytar-ingest` function, and set its secret.
 
 ### 5. Try it
 
@@ -88,6 +88,18 @@ The older names `HONEYPOT_URL`, `HONEYPOT_SECRET` and `TARPIT_MS` are still acce
 - At most 50 connections are held per Worker instance. Beyond that, decoys answer instantly, so a flood cannot pile up open connections.
 - When a scanner hangs up first, the hold ends and the slot is freed immediately.
 - How each hold ended (`gave_up` after N ms, or `completed`) is reported, so you can see scanner timeouts.
+
+## The crawler maze (optional)
+
+Off by default. Set `HONEYTAR_MAZE` to a URL prefix such as `/field-notes` and every GET or HEAD under it gets a generated page that only links deeper into the maze. A crawler that follows links keeps going; each page is held back for `HONEYTAR_MAZE_MS` (default 8000, at most 60000, 0 for no hold). Pages are plain filler words (never anything from the request), the same path always gives the same page, and only words from a fixed list are valid path segments, so anything else is a plain 404. Each page is `noindex`.
+
+Three rules keep it from harming a real site:
+
+- Add the prefix to `robots.txt` as `Disallow`, so search engines never enter.
+- Give people no visible link to it. Put one hidden link (`<a hidden rel="nofollow" href="/field-notes/">`) in your static HTML so only a link-following crawler finds the entry.
+- A per-instance budget (300 pages a minute) ends the maze with a 404 if a crawler is very fast, so it cannot run up your request count.
+
+Each page view is reported with its depth, how long it was held and how that ended. The ingest function counts them on one row per site, source and day (`sql/002_maze.sql`): pages and different pages, deepest level, pace between requests, patience (gave up or waited), and the order pages were fetched. It only records. It never blocks.
 
 ## Automatic blocking
 
