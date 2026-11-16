@@ -26,6 +26,12 @@ These are promises that tests check.
 10. Releases: bump `version` in `package.json` and add a `CHANGELOG.md` entry. Publishing is the owner's step; do not run `npm publish`.
 11. Never commit secrets (ingest secrets, Supabase keys).
 
+## Model routing
+Subagents in `.claude/agents/` keep search output out of the main context and run on cheaper models. Cloud sessions do not read `~/.claude/`, so the agents and these rules live in the repo.
+- Broad searches across many files or repos: `scout` (Haiku). A lookup in one or two known files stays inline.
+- Read-only questions that need many files read: `reader` (Sonnet).
+- Edits, design, security review and anything acted on directly stay in the main session; check subagent findings against the source.
+
 ## Workflow
 - Run the check before pushing. Never push with a failing test.
 - Add or update tests in `tests/` with every behaviour change.
